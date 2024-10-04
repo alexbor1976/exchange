@@ -3,36 +3,59 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Test App 1</title>
+  <title>App 1 - WebSocket Client</title>
+  <style>
+    textarea {
+      width: 100%;
+      height: 200px;
+      margin-top: 10px;
+    }
+  </style>
 </head>
 <body>
-  <h1>Test App 1</h1>
-  <input type="text" id="messageInput" placeholder="Type your message" />
+  <h1>App 1 - WebSocket Test</h1>
+  <input type="text" id="input" placeholder="Type a message">
   <button onclick="sendMessage()">Send</button>
-  <div id="messages"></div>
+
+  <textarea id="messages" readonly></textarea>
 
   <script>
-    const socket = new WebSocket('ws://localhost:8080');
+    const ws = new WebSocket('ws://localhost:8080');
 
-    socket.onopen = () => {
-      console.log('Connected to WebSocket server');
-    };
-
-    socket.onmessage = (event) => {
-      const messageObj = JSON.parse(event.data);
-      const messagesDiv = document.getElementById('messages');
-      messagesDiv.innerHTML += `<p>${messageObj.sender}: ${messageObj.message}</p>`;
-    };
-
+    // Function to send message as JSON
     function sendMessage() {
-      const input = document.getElementById('messageInput').value;
-      const messageObj = {
+      const input = document.getElementById('input');
+      const messageObject = {
         sender: 'App 1',
-        message: input
+        message: input.value,
+        timestamp: new Date().toISOString()
       };
-      socket.send(JSON.stringify(messageObj));  // Convert JS object to JSON string
-      document.getElementById('messageInput').value = '';
+
+      // Send the message as a JSON string
+      ws.send(JSON.stringify(messageObject));
+      input.value = '';  // Clear the input field after sending
     }
+
+    // Function to append messages to the textarea
+    function appendMessage(text) {
+      const messagesTextarea = document.getElementById('messages');
+      messagesTextarea.value += text + '\n';  // Append message
+      messagesTextarea.scrollTop = messagesTextarea.scrollHeight;  // Auto-scroll to the bottom
+    }
+
+    // Handle incoming messages from the WebSocket server
+    ws.onmessage = async (event) => {
+      const message = event.data instanceof Blob ? await event.data.text() : event.data;
+
+      // Parse the received JSON message
+      try {
+        const parsedMessage = JSON.parse(message);
+        const formattedMessage = `${parsedMessage.sender} (${parsedMessage.timestamp}): ${parsedMessage.message}`;
+        appendMessage(formattedMessage);
+      } catch (e) {
+        console.error('Error parsing JSON message:', e);
+      }
+    };
   </script>
 </body>
 </html>

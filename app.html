@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebSocket Test App</title>
+  <title>WebSocket JSON Test App</title>
   <style>
     textarea {
       width: 100%;
@@ -29,19 +29,25 @@
       gap: 10px;
       margin-top: 10px;
     }
-    .input-group input {
+    .input-group input, .input-group textarea {
       width: 40%;
     }
     .input-group button {
       width: 20%;
     }
-    #input {
+    #input, #jsonInput {
       margin-top: 20px;  /* Adds margin-top to 'Type a message' input */
+    }
+    .example {
+      font-size: 14px;
+      color: gray;
+      margin-top: 5px;
+      margin-bottom: 5px;
     }
   </style>
 </head>
 <body>
-  <h1>WebSocket Test App</h1>
+  <h1>WebSocket JSON Test App</h1>
 
   <div class="input-group">
     <input type="text" id="name" placeholder="Enter your name">
@@ -49,7 +55,22 @@
     <button onclick="clearAll()">Clear All</button>
   </div>
 
-  <input type="text" id="input" placeholder="Type a message">
+  <input type="text" id="input" placeholder="Type a plain message">
+  
+  <div class="example">
+    <p>JSON Format Example:</p>
+    <pre>
+{
+  "name": "ExampleName",
+  "list": [
+    { "name": "Item1", "params": "paramValue1" },
+    { "name": "Item2", "params": "paramValue2" }
+  ]
+}
+    </pre>
+  </div>
+
+  <textarea id="jsonInput" placeholder="Enter a JSON object to send"></textarea>
   <button onclick="sendMessage()">Send</button>
 
   <div class="container">
@@ -75,17 +96,47 @@
     // Store sent messages to avoid logging them again when received
     const sentMessages = [];
 
-    // Function to send message as JSON
+    // Function to send plain message or JSON message
     function sendMessage() {
-      const input = document.getElementById('input');
+      const input = document.getElementById('input').value.trim();
+      const jsonInput = document.getElementById('jsonInput').value.trim();
       const name = document.getElementById('name').value || 'Anonymous';  // Default to 'Anonymous' if no name is provided
       const toWhom = document.getElementById('toWhom').value || '';  // Target recipient, if any
-      const messageObject = {
-        sender: name,
-        recipient: toWhom,  // If empty, broadcast to all
-        message: input.value,
-        timestamp: new Date().toLocaleString()  // Better formatted timestamp
-      };
+      let messageObject;
+
+      // If there is JSON input, try to parse and send the JSON message
+      if (jsonInput) {
+        try {
+          const parsedJSON = JSON.parse(jsonInput);
+          if (!parsedJSON.name || !Array.isArray(parsedJSON.list)) {
+            throw new Error("Invalid format: JSON should have 'name' and 'list' (array of objects)");
+          }
+          // Check that each item in the list has the required fields
+          parsedJSON.list.forEach(item => {
+            if (!item.name || !item.params) {
+              throw new Error("Invalid format: Each item in 'list' should have 'name' and 'params'");
+            }
+          });
+
+          messageObject = {
+            sender: name,
+            recipient: toWhom,
+            json: parsedJSON,  // Sending the parsed JSON
+            timestamp: new Date().toLocaleString()  // Timestamp
+          };
+        } catch (error) {
+          appendMessage('log', `Error: ${error.message}`);
+          return;  // Exit the function if the JSON is invalid
+        }
+      } else {
+        // Fallback to sending a plain message if no JSON is provided
+        messageObject = {
+          sender: name,
+          recipient: toWhom,  // If empty, broadcast to all
+          message: input,
+          timestamp: new Date().toLocaleString()  // Better formatted timestamp
+        };
+      }
 
       // Send the message as a JSON string
       ws.send(JSON.stringify(messageObject));
@@ -93,17 +144,19 @@
       // Log the sent message in the 'sentMessages' textarea
       sentCount++;
       document.getElementById('sentCounter').textContent = sentCount;
-      appendMessage('sentMessages', `${messageObject.timestamp}: You -> ${messageObject.recipient || 'All'}: ${messageObject.message}`);
+      appendMessage('sentMessages', `${messageObject.timestamp}: You -> ${messageObject.recipient || 'All'}: ${jsonInput ? 'Sent JSON' : messageObject.message}`);
 
       // Log the message in the common log only once
-      appendMessage('log', `${messageObject.timestamp}: You -> ${messageObject.recipient || 'All'}: ${messageObject.message}`);
+      appendMessage('log', `${messageObject.timestamp}: You -> ${messageObject.recipient || 'All'}: ${jsonInput ? 'Sent JSON' : messageObject.message}`);
       logCount++;
       document.getElementById('logCounter').textContent = logCount;
 
       // Store the sent message to prevent duplicate logging
       sentMessages.push(messageObject);
 
-      input.value = '';  // Clear the input field after sending
+      // Clear inputs after sending
+      document.getElementById('input').value = '';
+      document.getElementById('jsonInput').value = '';
     }
 
     // Function to append messages to the textarea
@@ -120,36 +173,44 @@
       // Parse the received JSON message
       try {
         const parsedMessage = JSON.parse(message);
-        const formattedMessage = `${parsedMessage.timestamp}: ${parsedMessage.sender} -> ${parsedMessage.recipient || 'All'}: ${parsedMessage.message}`;
-        
-        // Check if the message is addressed to this client or is a broadcast
-        const name = document.getElementById('name').value || 'Anonymous';
-        
+        const formattedMessage = `${parsedMessage.timestamp}: ${parsedMessage.sender} -> ${parsedMessage.recipient || 'All'}`;
+
+        // Log the received message and JSON data
+        if (parsedMessage.json) {
+          // Check the JSON format validity
+          if (!parsedMessage.json.name || !Array.isArray(parsedMessage.json.list)) {
+            appendMessage('log', `Error: Received JSON has invalid format (missing 'name' or 'list')`);
+          } else {
+            appendMessage('log', `${formattedMessage}: Received JSON ->`);
+            appendMessage('log', `Name: ${parsedMessage.json.name}`);
+            parsedMessage.json.list.forEach((item, index) => {
+              appendMessage('log', `Item ${index + 1} - Name: ${item.name}, Params: ${item.params}`);
+            });
+          }
+        } else {
+          appendMessage('log', `${formattedMessage}: ${parsedMessage.message}`);
+        }
+
+        logCount++;
+        document.getElementById('logCounter').textContent = logCount;
+
         // If the message is specifically for this client, show it in 'receivedMessages'
+        const name = document.getElementById('name').value || 'Anonymous';
         if (parsedMessage.recipient === name) {
           receivedCount++;
           document.getElementById('receivedCounter').textContent = receivedCount;
-          appendMessage('receivedMessages', formattedMessage);
+          appendMessage('receivedMessages', `${formattedMessage}: ${parsedMessage.json ? 'Received JSON' : parsedMessage.message}`);
         }
-
-        // Only log the message in the common log if it wasn't sent by this client
-        const isOwnMessage = sentMessages.some(msg => 
-          msg.message === parsedMessage.message && msg.timestamp === parsedMessage.timestamp
-        );
-
-        if (!isOwnMessage) {
-          appendMessage('log', formattedMessage);
-          logCount++;
-          document.getElementById('logCounter').textContent = logCount;
-        }
-
       } catch (e) {
+        appendMessage('log', `Error parsing message: ${e.message}`);
         console.error('Error parsing JSON message:', e);
       }
     };
 
     // Function to clear all text areas
     function clearAll() {
+      document.getElementById('input').value = '';
+      document.getElementById('jsonInput').value = '';
       document.getElementById('sentMessages').value = '';
       document.getElementById('receivedMessages').value = '';
       document.getElementById('log').value = '';

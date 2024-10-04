@@ -13,46 +13,62 @@
     .container {
       display: flex;
       gap: 10px;
+      margin-top: 10px;
     }
-    .container textarea {
-      flex: 1;
+    .half {
+      width: 50%;
+    }
+    #log {
+      height: 150px;
     }
   </style>
 </head>
 <body>
   <h1>WebSocket Test App</h1>
-  
-  <label for="name">Your Name:</label>
+
+  <label for="name">My Name:</label>
   <input type="text" id="name" placeholder="Enter your name">
+  <br><br>
+
+  <label for="toWhom">To Whom:</label>
+  <input type="text" id="toWhom" placeholder="Enter recipient's name (leave blank for broadcast)">
   <br><br>
 
   <input type="text" id="input" placeholder="Type a message">
   <button onclick="sendMessage()">Send</button>
 
   <div class="container">
-    <div>
+    <div class="half">
       <h3>Sent Messages (<span id="sentCounter">0</span>)</h3>
       <textarea id="sentMessages" readonly></textarea>
     </div>
-    <div>
+    <div class="half">
       <h3>Received Messages (<span id="receivedCounter">0</span>)</h3>
       <textarea id="receivedMessages" readonly></textarea>
     </div>
   </div>
+
+  <h3>Common Log</h3>
+  <textarea id="log" readonly></textarea>
 
   <script>
     const ws = new WebSocket('ws://localhost:8080');
     let sentCount = 0;
     let receivedCount = 0;
 
+    // Store sent messages to avoid logging them again when received
+    const sentMessages = [];
+
     // Function to send message as JSON
     function sendMessage() {
       const input = document.getElementById('input');
-      const name = document.getElementById('name').value || 'Anonymous'; // Default to 'Anonymous' if no name is provided
+      const name = document.getElementById('name').value || 'Anonymous';  // Default to 'Anonymous' if no name is provided
+      const toWhom = document.getElementById('toWhom').value || '';  // Target recipient, if any
       const messageObject = {
         sender: name,
+        recipient: toWhom,  // If empty, broadcast to all
         message: input.value,
-        timestamp: new Date().toLocaleString() // Better formatted timestamp
+        timestamp: new Date().toLocaleString()  // Better formatted timestamp
       };
 
       // Send the message as a JSON string
@@ -62,7 +78,13 @@
       sentCount++;
       document.getElementById('sentCounter').textContent = sentCount;
       appendMessage('sentMessages', `You (${messageObject.timestamp}): ${messageObject.message}`);
+
+      // Log the message in the common log only once
+      appendMessage('log', `You -> ${messageObject.recipient || 'All'} (${messageObject.timestamp}): ${messageObject.message}`);
       
+      // Store the sent message to prevent duplicate logging
+      sentMessages.push(messageObject);
+
       input.value = '';  // Clear the input field after sending
     }
 
@@ -82,10 +104,25 @@
         const parsedMessage = JSON.parse(message);
         const formattedMessage = `${parsedMessage.sender} (${parsedMessage.timestamp}): ${parsedMessage.message}`;
         
-        // Log the received message in the 'receivedMessages' textarea
-        receivedCount++;
-        document.getElementById('receivedCounter').textContent = receivedCount;
-        appendMessage('receivedMessages', formattedMessage);
+        // Check if the message is addressed to this client or is a broadcast
+        const name = document.getElementById('name').value || 'Anonymous';
+        
+        // If the message is specifically for this client, show it in 'receivedMessages'
+        if (parsedMessage.recipient === name) {
+          receivedCount++;
+          document.getElementById('receivedCounter').textContent = receivedCount;
+          appendMessage('receivedMessages', formattedMessage);
+        }
+
+        // Only log the message in the common log if it wasn't sent by this client
+        const isOwnMessage = sentMessages.some(msg => 
+          msg.message === parsedMessage.message && msg.timestamp === parsedMessage.timestamp
+        );
+
+        if (!isOwnMessage) {
+          appendMessage('log', `${parsedMessage.sender} -> ${parsedMessage.recipient || 'All'} (${parsedMessage.timestamp}): ${parsedMessage.message}`);
+        }
+
       } catch (e) {
         console.error('Error parsing JSON message:', e);
       }

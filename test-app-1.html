@@ -19,13 +19,18 @@
     };
 
     socket.onmessage = (event) => {
+      const messageObj = JSON.parse(event.data);
       const messagesDiv = document.getElementById('messages');
-      messagesDiv.innerHTML += `<p>${event.data}</p>`;
+      messagesDiv.innerHTML += `<p>${messageObj.sender}: ${messageObj.message}</p>`;
     };
 
     function sendMessage() {
       const input = document.getElementById('messageInput').value;
-      socket.send(`App 1: ${input}`);
+      const messageObj = {
+        sender: 'App 1',
+        message: input
+      };
+      socket.send(JSON.stringify(messageObj));  // Convert JS object to JSON string
       document.getElementById('messageInput').value = '';
     }
   </script>

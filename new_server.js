@@ -5,9 +5,15 @@ const WebSocket = require('ws');
 
 class WebSocketServer {
   constructor(port = 8080) {
+    // the instance of the WebSocket server
     this.wss = new WebSocket.Server({ port });
     console.log(`WebSocket server running on ws://localhost:${port}`);
     
+    // The .on method is used to listen for events. 
+    // Here, it listens for the 'connection' event, which fires whenever a new client connects to the server.
+    // This event passes two parameters:
+    //      ws: The WebSocket object for the newly connected client.
+    //      req: The request object associated with the connection, which contains details like the client's IP address.
     this.wss.on('connection', (ws, req) => this.handleConnection(ws, req));
   }
 
